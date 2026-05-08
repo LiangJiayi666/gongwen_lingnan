@@ -1,12 +1,12 @@
 ---
 name: gongwen-lingnan-1-est
-description: 生成符合岭南学院公文格式规范的 Word 文档。基于 docx-js (JavaScript) 实现，智能估计页数，偶数页不加分页符、奇数页加分页符。版记始终保留。
+description: 生成符合岭南学院公文格式规范的 Word 文档。基于 docx-js (JavaScript) 实现，智能估计页数并输出，始终使用下一页分节符（版记独占新页）。版记始终保留。
 ---
 # 公文 Word 文档生成器（docx-js 版 · 智能分页）
 
 基于 `docx-js` JavaScript 库实现岭南学院公文格式规范，跨平台可用（Windows/macOS/Linux），无需安装 Microsoft Word 或 pywin32。
 
-与 `gongwen-lingnan-1` 的区别：生成版记前先估计文档页数。若估计为偶数页，使用**连续分节符**（不新增空白页），版记排在末页底部；若估计为奇数页，使用**下一页分节符**（新增空白页承载版记）。版记始终保留。
+与 `gongwen-lingnan-1` 的区别：生成版记前先估计文档页数并输出页码数。无论页码奇偶，始终使用**下一页分节符**（版记独占新页，新增空白页承载版记）。版记始终保留。
 
 ## 操作步骤
 

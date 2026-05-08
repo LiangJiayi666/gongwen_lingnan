@@ -15,15 +15,20 @@ description: 生成符合岭南学院公文格式规范的 Word 文档。基于 
 在开始任何操作前，必须在项目根目录下建立临时文件夹，格式为：
 
 ```
-<项目目录>/gongwen-lingnan-1-temp/<YYYYMMDD-HHMMSS>/
+<项目目录>/gongwen-lingnan-1-temp/<原始文件名（特殊字符化为_）>-<YYYYMMDD-HHMMSS>/
 ```
+
+- `原始文件名`：用户提供的 .docx 文件名（不含路径），所有非字母数字汉字字符替换为 `_`
+- `YYYYMMDD-HHMMSS`：当前时间戳
+- 若无法获取原始文件名（如纯命令行参数输入），则使用 `gongwen-<YYYYMMDD-HHMMSS>`
 
 示例操作：
 
 ```bash
-# 在项目根目录下
+# 原始文件: input - 副本.docx → sanitized: input___副本
+filename="input___副本"
 timestamp=$(date +%Y%m%d-%H%M%S)
-mkdir -p gongwen-lingnan-1-temp/$timestamp
+mkdir -p "gongwen-lingnan-1-temp/${filename}-${timestamp}"
 ```
 
 **严格要求**：所有调试文件、中间产物、转换后的 Markdown、提取的文本以及最终输出的 `.docx` 文件，**一律必须放入上述临时目录中**，严禁留在项目根目录或其他位置。
@@ -60,8 +65,8 @@ attachments:
 示例操作：
 
 ```bash
-# 进入该目录执行生成命令
-cd gongwen-lingnan-1-temp/$timestamp
+# 进入该目录执行生成命令（dir 为第一步创建的完整目录名）
+cd "gongwen-lingnan-1-temp/${filename}-${timestamp}"
 node .claude/skills/gongwen-lingnan-1/scripts/gongwen_docx.js --md input.md -o 输出.docx
 ```
 
@@ -72,7 +77,7 @@ node .claude/skills/gongwen-lingnan-1/scripts/gongwen_docx.js --md input.md -o �
 生成完成后，**必须在回复中明确告知用户最终文件存放的完整路径**。例如：
 
 ```
-公文已生成，保存在：gongwen-lingnan-1-temp/20250415-143022/输出.docx
+公文已生成，保存在：gongwen-lingnan-1-temp/input___副本-20250415-143022/输出.docx
 ```
 
 ## 命令行参数

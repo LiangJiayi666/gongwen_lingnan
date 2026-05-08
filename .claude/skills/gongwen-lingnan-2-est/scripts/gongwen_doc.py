@@ -725,8 +725,15 @@ def inject_banji_section(output_path):
     sect_pr_match = re.search(r"<w:sectPr\b.*?</w:sectPr>", doc_xml, re.DOTALL)
     if sect_pr_match:
         orig_sect_pr = sect_pr_match.group(0)
-        # 估计页数：偶数页用连续分节符（不新增空白页），奇数页用下一页分节符
-        page_count = estimate_page_count(doc_xml)
+        # 临时版记段落：格式与最终版记一致，插入正文末用于精确估计页数
+        temp_banji_para = (
+            '<w:p><w:pPr><w:jc w:val="left"/><w:spacing w:line="540" w:lineRule="exact"/></w:pPr>'
+            '<w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="28"/></w:rPr><w:t>公开方式：</w:t></w:r>'
+            '<w:r><w:rPr><w:rFonts w:eastAsia="仿宋_GB2312"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">依申请公开</w:t></w:r>'
+            '</w:p>'
+        )
+        doc_xml_with_banji = doc_xml.replace(orig_sect_pr, temp_banji_para + orig_sect_pr, 1)
+        page_count = estimate_page_count(doc_xml_with_banji)
         mod_sect_pr = orig_sect_pr
         if page_count % 2 == 0:
             mod_sect_pr = re.sub(r"^(<w:sectPr)", r'\1<w:type w:val="continuous"/>', orig_sect_pr)

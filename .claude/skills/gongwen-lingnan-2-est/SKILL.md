@@ -17,7 +17,24 @@ description: 生成符合岭南学院公文格式规范的 Word 文档。智能�
 
 **第一步：创建临时目录**
 
-在每次执行本 Skill 时，首先在 `gongwen-lingnan-2-temp/` 下建立一个以当前时间命名的子目录，例如 `gongwen-lingnan-2-temp/20250415-143052/`。
+在每次执行本 Skill 时，首先在 `gongwen-lingnan-2-temp/` 下建立子目录，命名格式：
+
+```
+gongwen-lingnan-2-temp/<原始文件名（特殊字符化为_）>-<YYYYMMDD-HHMMSS>/
+```
+
+- `原始文件名`：用户提供的 .docx 文件名（不含路径），所有非字母数字汉字字符替换为 `_`
+- `YYYYMMDD-HHMMSS`：当前时间戳
+- 若无法获取原始文件名（如纯命令行参数输入），则使用 `gongwen-<YYYYMMDD-HHMMSS>`
+
+示例：
+
+```bash
+# 原始文件: 通知-2026.docx → sanitized: 通知_2026
+filename="通知_2026"
+timestamp=$(date +%Y%m%d-%H%M%S)
+mkdir -p "gongwen-lingnan-2-temp/${filename}-${timestamp}"
+```
 
 **第二步：读取现有 docx 文件**
 
@@ -50,8 +67,11 @@ attachments:
 
 **第四步：生成公文**
 
+在第一步创建的临时目录中执行：
+
 ```bash
-python scripts/gongwen_doc.py --md input.md -o 输出.docx
+cd "gongwen-lingnan-2-temp/${filename}-${timestamp}"
+python .claude/skills/gongwen-lingnan-2-est/scripts/gongwen_doc.py --md input.md -o 输出.docx
 ```
 
 ## 格式规范

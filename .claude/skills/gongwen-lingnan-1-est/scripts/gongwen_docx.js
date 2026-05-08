@@ -587,13 +587,15 @@ async function injectBanjiSection(outputPath) {
   const relsUpdated = relsXml.replace("</Relationships>", footerRel + "</Relationships>");
   zip.file("word/_rels/document.xml.rels", relsUpdated);
 
-  // 修改 document.xml：把现有 sectPr 包进 section break，再加 section 2 的 sectPr
+  // 修改 document.xml：先插入临时版记行估页数，再包进 section break
   let docXml = await zip.file("word/document.xml").async("string");
   const sectPrMatch = docXml.match(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/);
   if (sectPrMatch) {
     const origSectPr = sectPrMatch[0];
-    // 估计页数：偶数页用连续分节符（不新增空白页），奇数页用下一页分节符
-    const pageCount = estimatePageCount(docXml);
+    // 临时版记段落：格式与最终版记一致，插入正文末用于精确估计页数
+    const tempBanjiPara = `<w:p><w:pPr><w:jc w:val="left"/><w:spacing w:line="540" w:lineRule="exact"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="28"/></w:rPr><w:t>公开方式：</w:t></w:r><w:r><w:rPr><w:rFonts w:eastAsia="仿宋_GB2312"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">依申请公开</w:t></w:r></w:p>`;
+    const docXmlWithBanji = docXml.replace(origSectPr, tempBanjiPara + origSectPr);
+    const pageCount = estimatePageCount(docXmlWithBanji);
     let modSectPr = origSectPr;
     if (pageCount % 2 === 0) {
       modSectPr = origSectPr.replace(/(<w:sectPr[^>]*>)/, '$1<w:type w:val="continuous"/>');

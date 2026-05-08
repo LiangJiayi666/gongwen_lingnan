@@ -672,6 +672,13 @@ async function injectBanjiSection(outputPath) {
   const emptyPara = `<w:p><w:pPr><w:rPr><w:sz w:val="28"/></w:rPr></w:pPr></w:p>`;
   const sec2SectPr = `<w:sectPr><w:footerReference w:type="even" r:id="${newRId}"/><w:footerReference w:type="default" r:id="${newRId}"/><w:footerReference w:type="first" r:id="${newRId}"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2098" w:right="1588" w:bottom="2041" w:left="1588" w:header="851" w:footer="1644" w:gutter="0"/></w:sectPr>`;
   docXml = docXml.replace(origSectPr, sectionBreak + emptyPara + sec2SectPr);
+
+  // 偶数页时：删除最后一个分节符，版记不独占新页
+  if (pageCount % 2 === 0) {
+    docXml = docXml.replace(sectionBreak, "");
+    console.log(`[BANJI] pageCount=${pageCount} is even → removed last section break, banji stays on same page`);
+  }
+
   zip.file("word/document.xml", docXml);
 
   const out = await zip.generateAsync({ type: "nodebuffer" });

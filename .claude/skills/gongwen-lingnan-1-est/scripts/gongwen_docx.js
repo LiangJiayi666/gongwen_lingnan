@@ -607,72 +607,75 @@ async function injectBanjiSection(outputPath) {
   const data = fs.readFileSync(outputPath);
   const zip = await JSZip.loadAsync(data);
 
-  // 找到最大 rId
-  const relsXml = await zip.file("word/_rels/document.xml.rels").async("string");
-  let maxId = 0;
-  for (const m of relsXml.matchAll(/Id="rId(\d+)"/g)) {
-    maxId = Math.max(maxId, parseInt(m[1]));
+  let docXml = await zip.file("word/document.xml").async("string");
+  const sectPrMatch = docXml.match(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/);
+  if (!sectPrMatch) {
+    const out = await zip.generateAsync({ type: "nodebuffer" });
+    fs.writeFileSync(outputPath, out);
+    return;
   }
-  const newRId = "rId" + (maxId + 1);
+  const origSectPr = sectPrMatch[0];
 
-  // 创建版记 footer 文件
-  const banjiPara = `<w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="28"/></w:rPr><w:t>公开方式：</w:t></w:r><w:r><w:rPr><w:rFonts w:eastAsia="仿宋_GB2312"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">依申请公开</w:t></w:r></w:p>`;
+  // 临时版记段落：插入正文末用于精确估计页数
+  const tempBanjiPara = `<w:p><w:pPr><w:jc w:val="left"/><w:spacing w:line="540" w:lineRule="exact"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="28"/></w:rPr><w:t>公开方式：</w:t></w:r><w:r><w:rPr><w:rFonts w:eastAsia="仿宋_GB2312"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">依申请公开</w:t></w:r></w:p>`;
+  const docXmlWithBanji = docXml.replace(origSectPr, tempBanjiPara + origSectPr);
+  const pageCount = estimatePageCount(docXmlWithBanji);
 
-  // 从模板默认页脚提取原始 <w:ftr> 命名空间声明和页码内容
-  let footerXml;
-  const templateFooter = zip.file("word/footer2.xml");
-  if (templateFooter) {
-    const tf = await templateFooter.async("string");
-    const rootMatch = tf.match(/^(\s*<\?xml[^?]*\?>\s*)?(<w:ftr[^>]*>)/);
-    if (rootMatch) {
-      const ftrOpen = rootMatch[2];
-      const contentStart = rootMatch[0].length;
-      const contentEnd = tf.lastIndexOf('</w:ftr>');
-      const innerContent = tf.slice(contentStart, contentEnd).replace(
-        /w:jc w:val="right"/g,
-        'w:jc w:val="left"'
-      );
-      footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${ftrOpen}${banjiPara}${innerContent}</w:ftr>`;
+  if (pageCount % 2 === 0) {
+    // 偶数页：版记作为内联段落保留，不建新 section，不引入额外行
+    console.log(`[BANJI] pageCount=${pageCount} (even) → inline banji, no section break`);
+    docXml = docXmlWithBanji;
+    zip.file("word/document.xml", docXml);
+  } else {
+    // 奇数页：需要新 section + 空白页承载版记 footer
+    console.log(`[BANJI] pageCount=${pageCount} (odd) → next-page section break (add blank page)`);
+
+    const relsXml = await zip.file("word/_rels/document.xml.rels").async("string");
+    let maxId = 0;
+    for (const m of relsXml.matchAll(/Id="rId(\d+)"/g)) {
+      maxId = Math.max(maxId, parseInt(m[1]));
+    }
+    const newRId = "rId" + (maxId + 1);
+
+    // 创建版记 footer 文件
+    const banjiPara = `<w:p><w:pPr><w:jc w:val="left"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="28"/></w:rPr><w:t>公开方式：</w:t></w:r><w:r><w:rPr><w:rFonts w:eastAsia="仿宋_GB2312"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">依申请公开</w:t></w:r></w:p>`;
+
+    let footerXml;
+    const templateFooter = zip.file("word/footer2.xml");
+    if (templateFooter) {
+      const tf = await templateFooter.async("string");
+      const rootMatch = tf.match(/^(\s*<\?xml[^?]*\?>\s*)?(<w:ftr[^>]*>)/);
+      if (rootMatch) {
+        const ftrOpen = rootMatch[2];
+        const contentStart = rootMatch[0].length;
+        const contentEnd = tf.lastIndexOf('</w:ftr>');
+        const innerContent = tf.slice(contentStart, contentEnd).replace(
+          /w:jc w:val="right"/g,
+          'w:jc w:val="left"'
+        );
+        footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${ftrOpen}${banjiPara}${innerContent}</w:ftr>`;
+      } else {
+        footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${banjiPara}</w:ftr>`;
+      }
     } else {
       footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${banjiPara}</w:ftr>`;
     }
-  } else {
-    footerXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">${banjiPara}</w:ftr>`;
-  }
-  zip.file("word/footer99.xml", footerXml);
+    zip.file("word/footer99.xml", footerXml);
 
-  // 注册 footer99.xml 到 [Content_Types].xml（Word 严格校验此项）
-  const ctXml = await zip.file("[Content_Types].xml").async("string");
-  const ctOverride = '<Override PartName="/word/footer99.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>';
-  if (!ctXml.includes("footer99.xml")) {
-    zip.file("[Content_Types].xml", ctXml.replace("</Types>", ctOverride + "</Types>"));
-  }
-
-  // 添加 rels 关系
-  const footerRel = `<Relationship Id="${newRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer99.xml"/>`;
-  const relsUpdated = relsXml.replace("</Relationships>", footerRel + "</Relationships>");
-  zip.file("word/_rels/document.xml.rels", relsUpdated);
-
-  // 修改 document.xml：先插入临时版记行估页数，再包进 section break
-  let docXml = await zip.file("word/document.xml").async("string");
-  const sectPrMatch = docXml.match(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/);
-  if (sectPrMatch) {
-    const origSectPr = sectPrMatch[0];
-    // 临时版记段落：格式与最终版记一致，插入正文末用于精确估计页数
-    const tempBanjiPara = `<w:p><w:pPr><w:jc w:val="left"/><w:spacing w:line="540" w:lineRule="exact"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia="黑体"/><w:sz w:val="28"/></w:rPr><w:t>公开方式：</w:t></w:r><w:r><w:rPr><w:rFonts w:eastAsia="仿宋_GB2312"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">依申请公开</w:t></w:r></w:p>`;
-    const docXmlWithBanji = docXml.replace(origSectPr, tempBanjiPara + origSectPr);
-    const pageCount = estimatePageCount(docXmlWithBanji);
-    let modSectPr = origSectPr;
-    if (pageCount % 2 === 0) {
-      modSectPr = origSectPr.replace(/(<w:sectPr[^>]*>)/, '$1<w:type w:val="continuous"/>');
-      console.log(`[BANJI] pageCount=${pageCount} (even) → continuous section break`);
-    } else {
-      console.log(`[BANJI] pageCount=${pageCount} (odd) → next-page section break (add blank page)`);
+    // 注册 footer99.xml 到 [Content_Types].xml
+    const ctXml = await zip.file("[Content_Types].xml").async("string");
+    const ctOverride = '<Override PartName="/word/footer99.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>';
+    if (!ctXml.includes("footer99.xml")) {
+      zip.file("[Content_Types].xml", ctXml.replace("</Types>", ctOverride + "</Types>"));
     }
-    const sectionBreak = `<w:p><w:pPr>${modSectPr}</w:pPr></w:p>`;
-    // 空段落（让 section 2 有内容，防止被忽略）
+
+    // 添加 rels 关系
+    const footerRel = `<Relationship Id="${newRId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer99.xml"/>`;
+    const relsUpdated = relsXml.replace("</Relationships>", footerRel + "</Relationships>");
+    zip.file("word/_rels/document.xml.rels", relsUpdated);
+
+    const sectionBreak = `<w:p><w:pPr>${origSectPr}</w:pPr></w:p>`;
     const emptyPara = `<w:p><w:pPr><w:rPr><w:sz w:val="28"/></w:rPr></w:pPr></w:p>`;
-    // Section 2 的 sectPr（版记 footer，显式设置所有 footer 类型防止继承）
     const sec2SectPr = `<w:sectPr><w:footerReference w:type="even" r:id="${newRId}"/><w:footerReference w:type="default" r:id="${newRId}"/><w:footerReference w:type="first" r:id="${newRId}"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="2098" w:right="1588" w:bottom="2041" w:left="1588" w:header="851" w:footer="1644" w:gutter="0"/></w:sectPr>`;
     docXml = docXml.replace(origSectPr, sectionBreak + emptyPara + sec2SectPr);
     zip.file("word/document.xml", docXml);

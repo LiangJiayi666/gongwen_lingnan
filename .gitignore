@@ -2,3 +2,6 @@ node_modules/
 gongwen-lingnan-1-temp/
 gongwen-lingnan-2-temp/
 input.docx
+__pycache__/
+*.pyc
+.DS_Store

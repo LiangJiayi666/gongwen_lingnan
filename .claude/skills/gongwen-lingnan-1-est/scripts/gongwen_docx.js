@@ -528,13 +528,79 @@ async function buildWithTemplate(doc, templatePath, outputPath) {
   console.log(`已生成（含红头）：${outputPath}`);
 }
 
+function extractParaTexts(xml) {
+  const texts = [];
+  const pRe = /<w:p[\s>][\s\S]*?<\/w:p>/g;
+  let pm;
+  while ((pm = pRe.exec(xml)) !== null) {
+    const paraXml = pm[0];
+    const parts = [];
+    const tRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+    let tm;
+    while ((tm = tRe.exec(paraXml)) !== null) {
+      parts.push(tm[1]);
+    }
+    texts.push(parts.join(""));
+  }
+  return texts;
+}
+
+function countCharWidth(text) {
+  if (!text) return 0;
+  let w = 0;
+  for (const ch of text) {
+    if (/\s/.test(ch)) continue;
+    const code = ch.codePointAt(0);
+    const isWide =
+      (code >= 0x1100 && code <= 0x115f) ||
+      (code >= 0x2e80 && code <= 0x303f) ||
+      (code >= 0x3040 && code <= 0x33ff) ||
+      (code >= 0x3400 && code <= 0x4dbf) ||
+      (code >= 0x4e00 && code <= 0x9fff) ||
+      (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0xf900 && code <= 0xfaff) ||
+      (code >= 0xfe30 && code <= 0xfe6f) ||
+      (code >= 0xff01 && code <= 0xff60) ||
+      (code >= 0xffe0 && code <= 0xffe6) ||
+      (code >= 0x20000 && code <= 0x2fffd) ||
+      (code >= 0x30000 && code <= 0x3fffd);
+    w += isWide ? 1.0 : 0.5;
+  }
+  return w;
+}
+
+function estimateParaLines(text, fontSizePt) {
+  if (!text) return 1;
+  const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+  const CHAR_WIDTH_TWIPS = fontSizePt * 20;
+  const firstLineChars = (CONTENT_WIDTH - TWO_CHAR_INDENT) / CHAR_WIDTH_TWIPS;
+  const otherLineChars = CONTENT_WIDTH / CHAR_WIDTH_TWIPS;
+  const charW = countCharWidth(text);
+  if (charW <= firstLineChars) return 1;
+  return 1 + Math.ceil((charW - firstLineChars) / otherLineChars);
+}
+
 function estimatePageCount(docXml) {
   const bodyMatch = docXml.match(/<w:body[^>]*>([\s\S]*)<\/w:body>/);
-  if (!bodyMatch) return 1;
+  if (!bodyMatch) { console.log("[ESTIMATE] no body match, pageCount=1"); return 1; }
   const bodyInner = bodyMatch[1];
-  const paraCount = (bodyInner.match(/<w:p[\s>]/g) || []).length;
+  const texts = extractParaTexts(bodyInner);
+  let totalLines = 0;
+  const details = texts.map((t) => {
+    const lines = estimateParaLines(t, SIZE_BODY);
+    totalLines += lines;
+    return { text: t.substring(0, 40), lines };
+  });
   const LINES_PER_PAGE = 23;
-  return Math.max(1, Math.ceil(paraCount / LINES_PER_PAGE));
+  const pages = Math.max(1, Math.ceil(totalLines / LINES_PER_PAGE));
+  console.log(`[ESTIMATE] totalPara=${texts.length}, totalLines=${totalLines}, LINES_PER_PAGE=${LINES_PER_PAGE}, pages=${pages}`);
+  // 打印每段行数用于调试
+  for (const d of details) {
+    if (d.lines > 1) {
+      console.log(`  [L${d.lines}] ${d.text}...`);
+    }
+  }
+  return pages;
 }
 
 async function injectBanjiSection(outputPath) {
@@ -599,6 +665,9 @@ async function injectBanjiSection(outputPath) {
     let modSectPr = origSectPr;
     if (pageCount % 2 === 0) {
       modSectPr = origSectPr.replace(/(<w:sectPr[^>]*>)/, '$1<w:type w:val="continuous"/>');
+      console.log(`[BANJI] pageCount=${pageCount} (even) → continuous section break`);
+    } else {
+      console.log(`[BANJI] pageCount=${pageCount} (odd) → next-page section break (add blank page)`);
     }
     const sectionBreak = `<w:p><w:pPr>${modSectPr}</w:pPr></w:p>`;
     // 空段落（让 section 2 有内容，防止被忽略）
